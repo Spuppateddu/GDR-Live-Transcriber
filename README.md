@@ -30,26 +30,33 @@ cd GDR-Live-Transcriber
 `install.sh` fa tutto:
 1. installa le dipendenze di sistema (ffmpeg, pulseaudio-utils, SDL2, strumenti di build);
 2. scarica e compila whisper.cpp con il supporto al live-stream;
-3. scarica il modello (default **`small`**, buono per il tempo reale su CPU).
+3. **rileva la tua CPU/RAM, consiglia un modello e ti fa scegliere** quale scaricare.
 
 ### Quale modello?
 
-whisper è **multilingue**, quindi l'italiano è già supportato. Scegli in base
-alla potenza della CPU e a quanto vuoi essere preciso:
+whisper è **multilingue**, quindi l'italiano è già supportato. Durante
+l'installazione lo script ti mostra un menu e suggerisce il modello in base
+all'hardware; questa è la guida:
 
-| Modello    | Velocità | Precisione | Quando usarlo                          |
-|------------|----------|------------|----------------------------------------|
-| `small`    | alta     | buona      | **live** (default)                     |
-| `medium`   | media    | ottima     | live se la CPU regge                   |
-| `large-v3` | lenta    | massima    | ri-trascrizione del `.wav` a fine sessione |
+| Modello    | Velocità | Precisione | Quando usarlo                              |
+|------------|----------|------------|--------------------------------------------|
+| `tiny`     | massima  | bassa      | CPU molto deboli / test                    |
+| `base`     | alta     | discreta   | CPU 2 core                                 |
+| `small`    | buona    | buona      | **live** su CPU 4 core (consigliato tipico)|
+| `medium`   | media    | ottima     | live su CPU 8+ core e 16+ GB RAM           |
+| `large-v3` | lenta    | massima    | NON per il live → ri-trascrizione del `.wav` |
 
 > ⚠️ Non usare i modelli che finiscono in `.en` (es. `small.en`): sono **solo inglese**.
 
-Per scaricare anche un modello più grande:
+Puoi saltare il menu e forzare un modello (utile per rieseguire o per scaricarne
+un secondo):
 
 ```bash
-MODEL=large-v3 ./install.sh
+MODEL=large-v3 ./install.sh    # scarica anche large-v3 per la trascrizione finale
 ```
+
+`start.sh` userà automaticamente il modello che hai installato (se ne hai più di
+uno, sceglie il migliore adatto al live); puoi sempre forzarlo con `MODEL=...`.
 
 ---
 

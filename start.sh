@@ -15,8 +15,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WHISPER_DIR="$HERE/whisper.cpp"
 BIN_DIR="$WHISPER_DIR/build/bin"
 
-# Language and model (override on the command line, e.g. LANG_CODE=en MODEL=large-v3 ./start.sh)
+# Language and model (override on the command line, e.g. LANG_CODE=en MODEL=medium ./start.sh)
 LANG_CODE="${LANG_CODE:-it}"
+
+# If MODEL isn't forced, auto-pick whichever model was installed, preferring the
+# most accurate one suitable for live (large-v3 last, it's heavy for real time).
+MODEL="${MODEL:-}"
+if [ -z "$MODEL" ]; then
+    for m in medium small base tiny large-v3; do
+        if [ -f "$WHISPER_DIR/models/ggml-$m.bin" ]; then MODEL="$m"; break; fi
+    done
+fi
 MODEL="${MODEL:-small}"
 MODEL_FILE="$WHISPER_DIR/models/ggml-$MODEL.bin"
 
