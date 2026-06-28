@@ -28,18 +28,20 @@ choose_model() {
     else                                                   rec="tiny"
     fi
 
-    echo "==> CPU rilevata: ${cores} core, ${ram_gb} GB RAM" >&2
-    echo "    Modello consigliato per il LIVE su questa macchina: ${rec}" >&2
+    echo "==> Detected CPU: ${cores} cores, ${ram_gb} GB RAM" >&2
+    echo "    Recommended model for LIVE on this machine: ${rec}" >&2
     echo >&2
-    echo "Scegli il modello da scaricare (per il tempo reale):" >&2
-    echo "   1) tiny     - velocissimo, qualita' bassa        (~75 MB)"  >&2
-    echo "   2) base     - veloce, qualita' discreta          (~140 MB)" >&2
-    echo "   3) small    - buon compromesso                   (~460 MB)" >&2
-    echo "   4) medium   - lento ma molto preciso             (~1.5 GB)" >&2
-    echo "   5) large-v3 - massima qualita', NON per il live  (~3 GB)"   >&2
+    echo "Choose the model to download (for real-time transcription):" >&2
+    echo "   1) tiny     - fastest, low quality            (~75 MB)"  >&2
+    echo "   2) base     - fast, decent quality            (~140 MB)" >&2
+    echo "   3) small    - good balance                    (~460 MB)" >&2
+    echo "   4) medium   - slow but very accurate          (~1.5 GB)" >&2
+    echo "   5) large-v3 - best quality, NOT for live      (~3 GB)"   >&2
+    echo >&2
+    echo "All models are multilingual and understand Italian." >&2
     echo >&2
     local choice
-    read -rp "Numero [Invio = consigliato: ${rec}]: " choice </dev/tty || choice=""
+    read -rp "Number [Enter = recommended: ${rec}]: " choice </dev/tty || choice=""
     case "$choice" in
         1) echo "tiny" ;;
         2) echo "base" ;;
@@ -47,7 +49,7 @@ choose_model() {
         4) echo "medium" ;;
         5) echo "large-v3" ;;
         "") echo "$rec" ;;
-        *) echo "Scelta non valida, uso il consigliato: ${rec}" >&2; echo "$rec" ;;
+        *) echo "Invalid choice, using recommended: ${rec}" >&2; echo "$rec" ;;
     esac
 }
 
@@ -55,7 +57,7 @@ if [ -z "$MODEL" ]; then
     if [ -t 0 ] || [ -e /dev/tty ]; then
         MODEL="$(choose_model)"
     else
-        MODEL="small"   # nessun terminale interattivo: usa un default sensato
+        MODEL="small"   # no interactive terminal: use a sensible default
     fi
 fi
 
