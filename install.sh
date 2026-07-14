@@ -83,6 +83,18 @@ cmake --build "$WHISPER_DIR/build" -j --config Release
 echo "==> Downloading model: $MODEL ..."
 bash "$WHISPER_DIR/models/download-ggml-model.sh" "$MODEL"
 
+# The live draft shown while recording needs a fast model (base or tiny);
+# big models can't keep up in real time on CPU.
+case "$MODEL" in
+    tiny|base) : ;;   # the main model is already fast enough for the live draft
+    *)
+        if [ ! -f "$WHISPER_DIR/models/ggml-base.bin" ] \
+           && [ ! -f "$WHISPER_DIR/models/ggml-tiny.bin" ]; then
+            echo "==> Downloading 'base' too (fast model for the live draft, ~140 MB)..."
+            bash "$WHISPER_DIR/models/download-ggml-model.sh" base
+        fi ;;
+esac
+
 echo
 echo "==> Done."
 echo "    whisper.cpp built in: $WHISPER_DIR/build/bin"

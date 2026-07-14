@@ -2,18 +2,25 @@
 #
 # GDR Live Transcriber — record a session
 #
-# Records your MICROPHONE and your SYSTEM AUDIO (Discord voices, game sounds)
+# Records your MICROPHONE and your PC AUDIO (Discord voices, game sounds)
 # as two separate tracks. Recording is very light on the CPU, so you can play
 # normally. When you stop with Ctrl+C, both tracks are transcribed with
 # whisper.cpp and merged into a single transcript.txt, time-ordered, with
-# [ME] / [DISCORD] speaker labels.
+# [ME] / [PC] speaker labels.
 #
 # Files land in ./sessions/<timestamp>/
+#
+# While recording, a DRAFT transcript scrolls in the terminal ~30 seconds
+# behind live (handy to re-read names and events), done with a fast model.
+# The accurate transcript is still the one produced at the end.
 #
 # Options (environment variables):
 #   LANG_CODE=it        spoken language (default: it, use 'auto' to detect)
 #   MODEL=small         whisper model for the transcription at the end
 #   AUTO_TRANSCRIBE=0   record only; transcribe later with ./transcribe.sh
+#   LIVE=0              disable the live draft in the terminal
+#   LIVE_MODEL=tiny     fast model for the live draft (default: base, else tiny)
+#   LIVE_CHUNK=30       seconds of audio per live chunk
 #
 set -euo pipefail
 
@@ -27,7 +34,7 @@ for cmd in pactl parec ffmpeg; do
 done
 
 # --- pick the devices --------------------------------------------------------
-# Mic = default input, Discord/game = monitor of the default output.
+# Mic = default input, PC audio (Discord/game) = monitor of the default output.
 # Set them in Settings -> Sound before starting.
 MIC_SRC="$(pactl get-default-source)"
 OUT_SINK="$(pactl get-default-sink)"
@@ -48,24 +55,35 @@ STAMP="$(date +%Y-%m-%d_%H-%M-%S)"
 OUT_DIR="$HERE/sessions/$STAMP"
 mkdir -p "$OUT_DIR"
 MIC_RAW="$OUT_DIR/mic.raw"
-DIS_RAW="$OUT_DIR/discord.raw"
+PC_RAW="$OUT_DIR/pc.raw"
 MIC_WAV="$OUT_DIR/mic.wav"
-DIS_WAV="$OUT_DIR/discord.wav"
+PC_WAV="$OUT_DIR/pc.wav"
 
 echo "==> Session:      $OUT_DIR"
 echo "    Microphone:   $MIC_SRC"
-echo "    System audio: $MON_SRC"
+echo "    PC audio:     $MON_SRC"
 
 # --- record ------------------------------------------------------------------
 # Raw PCM (no header): safe to cut at any moment, converted to .wav afterwards.
 parec -d "$MIC_SRC" --rate="$RATE" --channels=1 --format=s16le > "$MIC_RAW" &
 MIC_PID=$!
-parec -d "$MON_SRC" --rate="$RATE" --channels=1 --format=s16le > "$DIS_RAW" &
-DIS_PID=$!
+parec -d "$MON_SRC" --rate="$RATE" --channels=1 --format=s16le > "$PC_RAW" &
+PC_PID=$!
+
+# Live draft: a helper process transcribes the tracks in near-real-time with
+# a fast model and prints the lines here. If it can't start (no fast model),
+# it says why and recording simply continues without it.
+LIVE="${LIVE:-1}"
+LIVE_PID=""
+if [ "$LIVE" = "1" ]; then
+    "$HERE/live.sh" "$OUT_DIR" &
+    LIVE_PID=$!
+    echo "==> Live draft: on screen ~${LIVE_CHUNK:-30}s behind (also saved to live.txt). LIVE=0 disables it."
+fi
 
 STOP=""
 trap 'STOP=1' INT TERM
-trap 'kill "$MIC_PID" "$DIS_PID" 2>/dev/null || true' EXIT
+trap 'kill "$MIC_PID" "$PC_PID" ${LIVE_PID:+"$LIVE_PID"} 2>/dev/null || true' EXIT
 
 echo
 echo "==> RECORDING — play your session. Press Ctrl+C to stop and transcribe."
@@ -75,7 +93,7 @@ while [ -z "$STOP" ]; do
     # On Ctrl+C the recorders die together with us — that's a normal stop,
     # so check STOP again before diagnosing a dead recorder.
     [ -n "$STOP" ] && break
-    if ! kill -0 "$MIC_PID" 2>/dev/null || ! kill -0 "$DIS_PID" 2>/dev/null; then
+    if ! kill -0 "$MIC_PID" 2>/dev/null || ! kill -0 "$PC_PID" 2>/dev/null; then
         echo
         echo "WARNING: a recorder died (device unplugged?). Stopping." >&2
         break
@@ -86,13 +104,18 @@ while [ -z "$STOP" ]; do
 done
 echo
 echo "==> Stopping recorders..."
-kill "$MIC_PID" "$DIS_PID" 2>/dev/null || true
+# Stop the live draft first: it reads the .raw files we are about to delete.
+if [ -n "$LIVE_PID" ]; then
+    kill "$LIVE_PID" 2>/dev/null || true
+    wait "$LIVE_PID" 2>/dev/null || true
+fi
+kill "$MIC_PID" "$PC_PID" 2>/dev/null || true
 wait "$MIC_PID" 2>/dev/null || true
-wait "$DIS_PID" 2>/dev/null || true
+wait "$PC_PID" 2>/dev/null || true
 trap - EXIT INT TERM
 
 # --- raw -> wav ---------------------------------------------------------------
-for pair in "$MIC_RAW:$MIC_WAV" "$DIS_RAW:$DIS_WAV"; do
+for pair in "$MIC_RAW:$MIC_WAV" "$PC_RAW:$PC_WAV"; do
     raw="${pair%%:*}"; wav="${pair##*:}"
     if [ -s "$raw" ]; then
         ffmpeg -hide_banner -loglevel error -y \
@@ -117,11 +140,11 @@ check_level() {
     fi
 }
 check_level "$MIC_WAV" "microphone"
-check_level "$DIS_WAV" "system-audio (Discord)"
+check_level "$PC_WAV" "PC-audio"
 
 echo "==> Recording saved:"
 [ -f "$MIC_WAV" ] && echo "    $MIC_WAV"
-[ -f "$DIS_WAV" ] && echo "    $DIS_WAV"
+[ -f "$PC_WAV" ] && echo "    $PC_WAV"
 
 # --- transcribe ----------------------------------------------------------------
 if [ "$AUTO_TRANSCRIBE" = "1" ]; then

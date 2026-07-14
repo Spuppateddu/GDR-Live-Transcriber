@@ -9,15 +9,19 @@ generate a summary of the session.
 How it works:
 
 1. `./start.sh` records **two separate tracks** while you play:
-   your **microphone** and your **system audio** (Discord voices, game sounds).
+   your **microphone** and your **PC audio** (Discord voices, game sounds).
    Recording is very light — it doesn't slow down your game.
-2. When you press **Ctrl+C**, both tracks are transcribed **locally and
+2. While you play, a **live draft** of the transcript scrolls in the terminal,
+   about 30 seconds behind — handy to re-read a name or what was just said.
+   It uses a small fast model, so it's rough; the accurate transcript comes at
+   the end.
+3. When you press **Ctrl+C**, both tracks are transcribed **locally and
    offline** with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and
    merged into one time-ordered transcript with speaker labels:
 
    ```
    [00:12:41] [ME] Entro nella cripta con la torcia accesa.
-   [00:12:47] [DISCORD] Tira un tiro salvezza su destrezza!
+   [00:12:47] [PC] Tira un tiro salvezza su destrezza!
    ```
 
 Recording the two tracks separately (instead of mixing them) gives much better
@@ -51,6 +55,9 @@ cd GDR-Live-Transcriber
 1. installs system dependencies (ffmpeg, pulseaudio-utils, build tools);
 2. downloads and builds whisper.cpp;
 3. **detects your CPU/RAM, recommends a model, and lets you choose** which to download.
+
+If you pick a big model (`small` or larger), `install.sh` also downloads the
+small `base` model (~140 MB) — that one powers the live draft during recording.
 
 ### Which model?
 
@@ -95,6 +102,9 @@ headphones) do it **before** starting the session.
 ```
 
 - A timer shows that recording is running. Play normally.
+- Every ~30 seconds, the **live draft** prints what was just said, with the
+  same `[ME]` / `[PC]` labels as the final transcript. It's a quick
+  low-quality draft to jog your memory — don't worry if it garbles words.
 - Press **Ctrl+C** when the session ends: transcription starts automatically
   (this part uses the CPU heavily — fine to leave it running and walk away).
 
@@ -103,10 +113,11 @@ Files are saved in `sessions/<date_time>/`:
 ```
 sessions/2026-07-14_21-00-00/
 ├── transcript.txt   ← the merged transcript (feed this to your LLM)
+├── live.txt         ← the live draft (rough; superseded by transcript.txt)
 ├── mic.wav          ← your voice (backup)
-├── discord.wav      ← system audio: friends + game (backup)
+├── pc.wav           ← PC audio: friends + game (backup)
 ├── mic.srt          ← per-track subtitles with timestamps
-└── discord.srt
+└── pc.srt
 ```
 
 ### Options
@@ -116,6 +127,9 @@ LANG_CODE=en ./start.sh          # change language (default: it = Italian)
 LANG_CODE=auto ./start.sh        # let whisper auto-detect the language
 MODEL=small ./start.sh           # force a model for the final transcription
 AUTO_TRANSCRIBE=0 ./start.sh     # record only, transcribe later (see below)
+LIVE=0 ./start.sh                # no live draft, just the timer
+LIVE_CHUNK=20 ./start.sh         # live draft updates every 20 s instead of 30
+LIVE_MODEL=tiny ./start.sh       # force the model used for the live draft
 ```
 
 ---
@@ -142,14 +156,14 @@ It also works on a single audio file (any format ffmpeg can read):
 
 That part is up to you: upload `transcript.txt` to your favorite LLM and ask
 for a session summary. The file starts with a comment explaining the
-`[ME]` / `[DISCORD]` labels so the model has the context it needs.
+`[ME]` / `[PC]` labels so the model has the context it needs.
 
 ---
 
 ## Troubleshooting
 
 - **"whisper-cli not found"** → run `./install.sh` first.
-- **"the microphone/system-audio track sounds silent"** → the wrong device is
+- **"the microphone/PC-audio track sounds silent"** → the wrong device is
   set as default; fix it in *Settings → Sound* and record again.
 - **Friends' voices missing** → Discord must play through the **default**
   output device. Check *Settings → Sound* and Discord's own output setting.
@@ -161,3 +175,7 @@ for a session summary. The file starts with a comment explaining the
   `MODEL=small ./transcribe.sh sessions/<dir>`.
 - **Wrong language in the transcript** → pass `LANG_CODE=it` (or your
   language, or `auto`).
+- **Live draft lines look garbled** → normal: the draft uses a small fast
+  model. The final `transcript.txt` is made with the big one.
+- **No live draft lines appear** → either nobody spoke (silent chunks are
+  skipped) or no fast model is installed — get one with `MODEL=base ./install.sh`.

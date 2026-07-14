@@ -6,8 +6,8 @@
 #
 #   1) Session directory (the normal case, run automatically by start.sh):
 #        ./transcribe.sh sessions/2026-07-14_21-00-00
-#      Transcribes mic.wav and discord.wav and merges them, time-ordered and
-#      labeled [ME] / [DISCORD], into transcript.txt in the same directory.
+#      Transcribes mic.wav and pc.wav and merges them, time-ordered and
+#      labeled [ME] / [PC], into transcript.txt in the same directory.
 #
 #   2) Single audio file:
 #        ./transcribe.sh some-audio.wav
@@ -93,18 +93,21 @@ srt_to_tsv() {  # $1=srt  $2=label
 if [ -d "$TARGET" ]; then
     DIR="$(cd "$TARGET" && pwd)"
     MIC_WAV="$DIR/mic.wav"
-    DIS_WAV="$DIR/discord.wav"
+    PC_WAV="$DIR/pc.wav"
+    # Legacy sessions called the PC-audio track "discord".
+    [ ! -f "$PC_WAV" ] && [ -f "$DIR/discord.wav" ] && PC_WAV="$DIR/discord.wav"
+    PC_PREFIX="${PC_WAV%.wav}"
     TXT="$DIR/transcript.txt"
 
     TRACKS=0
     [ -f "$MIC_WAV" ] && TRACKS=$((TRACKS+1))
-    [ -f "$DIS_WAV" ] && TRACKS=$((TRACKS+1))
+    [ -f "$PC_WAV" ] && TRACKS=$((TRACKS+1))
     if [ "$TRACKS" -eq 0 ]; then
         # Legacy sessions recorded a single mixed recording.wav.
         if [ -f "$DIR/recording.wav" ]; then
             exec "$0" "$DIR/recording.wav"
         fi
-        echo "ERROR: no mic.wav / discord.wav found in $DIR" >&2
+        echo "ERROR: no mic.wav / pc.wav found in $DIR" >&2
         exit 1
     fi
 
@@ -117,8 +120,8 @@ if [ -d "$TARGET" ]; then
     if [ -f "$MIC_WAV" ]; then
         run_whisper_srt "$MIC_WAV" "$DIR/mic" "$T_EACH" & PIDS+=($!)
     fi
-    if [ -f "$DIS_WAV" ]; then
-        run_whisper_srt "$DIS_WAV" "$DIR/discord" "$T_EACH" & PIDS+=($!)
+    if [ -f "$PC_WAV" ]; then
+        run_whisper_srt "$PC_WAV" "$PC_PREFIX" "$T_EACH" & PIDS+=($!)
     fi
     FAIL=0
     for pid in "${PIDS[@]}"; do
@@ -132,11 +135,11 @@ if [ -d "$TARGET" ]; then
     echo "==> Merging tracks into transcript.txt ..."
     {
         echo "# GDR session $(basename "$DIR") — language: $LANG_CODE, model: $MODEL"
-        echo "# [ME] = my microphone. [DISCORD] = system audio: friends on Discord, game sounds."
+        echo "# [ME] = my microphone. [PC] = my PC's audio: friends on Discord, game sounds."
         echo
         {
-            [ -f "$DIR/mic.srt" ]     && srt_to_tsv "$DIR/mic.srt"     "ME"
-            [ -f "$DIR/discord.srt" ] && srt_to_tsv "$DIR/discord.srt" "DISCORD"
+            [ -f "$DIR/mic.srt" ]       && srt_to_tsv "$DIR/mic.srt"       "ME"
+            [ -f "$PC_PREFIX.srt" ]     && srt_to_tsv "$PC_PREFIX.srt"     "PC"
         } | sort -s -n -k1,1 \
           | awk -F'\t' '{ printf "[%02d:%02d:%02d] [%s] %s\n",
                           $1/3600, ($1%3600)/60, $1%60, $2, $3 }'
