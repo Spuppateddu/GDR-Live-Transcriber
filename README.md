@@ -1,14 +1,31 @@
 # GDR Live Transcriber
 
-**Real-time speech-to-text for tabletop RPG ("GDR") sessions on Linux.**
+**Record your tabletop RPG ("GDR") sessions on Linux and get a text transcript
+of everything that was said — you on the microphone, your friends on Discord.**
 
-It mixes your **microphone** + your PC's **audio output** (game / voice chat like
-Discord) into a single stream, transcribes it **live and offline** with
-[whisper.cpp](https://github.com/ggerganov/whisper.cpp), and saves both a `.txt`
-transcript and a `.wav` backup recording.
+The transcript (`transcript.txt`) is designed to be fed to an LLM afterwards to
+generate a summary of the session.
 
-The session language defaults to **Italian** (`it`) — whisper's multilingual
-models understand Italian out of the box. You can change it (see Options).
+How it works:
+
+1. `./start.sh` records **two separate tracks** while you play:
+   your **microphone** and your **system audio** (Discord voices, game sounds).
+   Recording is very light — it doesn't slow down your game.
+2. When you press **Ctrl+C**, both tracks are transcribed **locally and
+   offline** with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and
+   merged into one time-ordered transcript with speaker labels:
+
+   ```
+   [00:12:41] [ME] Entro nella cripta con la torcia accesa.
+   [00:12:47] [DISCORD] Tira un tiro salvezza su destrezza!
+   ```
+
+Recording the two tracks separately (instead of mixing them) gives much better
+transcription quality — whisper struggles when two voices overlap in the same
+audio — and lets the transcript say who was talking.
+
+The default language is **Italian** (`it`); whisper's multilingual models
+support English and ~100 other languages too (see Options).
 
 > Everything runs locally: after install, **no internet and no account needed**.
 
@@ -31,101 +48,116 @@ cd GDR-Live-Transcriber
 ```
 
 `install.sh` does everything:
-1. installs system dependencies (ffmpeg, pulseaudio-utils, SDL2, build tools);
-2. downloads and builds whisper.cpp with live-stream support;
+1. installs system dependencies (ffmpeg, pulseaudio-utils, build tools);
+2. downloads and builds whisper.cpp;
 3. **detects your CPU/RAM, recommends a model, and lets you choose** which to download.
 
 ### Which model?
 
-whisper is **multilingual**, so Italian is supported by all of these. During
-install you get a menu with a hardware-based recommendation; here's the guide:
+Transcription happens **after** the session (not in real time), so you can
+afford a bigger, more accurate model than a "live" tool could. Rough guide for
+a 3-hour session:
 
-| Model      | Speed  | Accuracy | When to use                                |
-|------------|--------|----------|--------------------------------------------|
-| `tiny`     | fastest| low      | very weak CPUs / testing                   |
-| `base`     | fast   | decent   | 2-core CPUs                                |
-| `small`    | good   | good     | **live** on a 4-core CPU (typical pick)    |
-| `medium`   | medium | great    | live on 8+ core CPU with 16+ GB RAM        |
-| `large-v3` | slow   | best     | NOT for live → final re-transcription of `.wav` |
+| Model      | Accuracy | Transcription time (typical 8-core CPU) |
+|------------|----------|------------------------------------------|
+| `tiny`     | low      | minutes — only for testing               |
+| `base`     | decent   | ~10 min                                  |
+| `small`    | good     | ~30 min                                  |
+| `medium`   | great    | ~1–2 h (**recommended** on 8+ cores, 16+ GB RAM) |
+| `large-v3` | best     | can take longer than the session itself  |
 
 > ⚠️ Do not use the `.en` models (e.g. `small.en`): those are **English only**.
 
 You can skip the menu and force a model (handy to download a second one):
 
 ```bash
-MODEL=large-v3 ./install.sh    # also grab large-v3 for the final transcription
+MODEL=medium ./install.sh
 ```
 
-`start.sh` automatically uses whichever model you installed (if you have several,
-it picks the best one suitable for live); you can always override with `MODEL=...`.
+`transcribe.sh` automatically uses the best model you have installed; override
+anytime with `MODEL=...`.
 
 ---
 
 ## 2. Before first use: set your default devices
 
-The script captures the **default microphone** and the **default audio output**.
+The tool records the **default microphone** and the **default audio output**.
 Open *Settings → Sound* and make sure the correct mic and speakers/headphones
-are selected as the defaults.
+are selected as the defaults. If you switch output device (e.g. plug in
+headphones) do it **before** starting the session.
 
 ---
 
-## 3. Start a session (live)
+## 3. Record a session
 
 ```bash
 ./start.sh
 ```
 
-- Text appears on screen as you talk/play.
-- Press **Ctrl+C** to stop (the script cleans up the audio mixer automatically).
+- A timer shows that recording is running. Play normally.
+- Press **Ctrl+C** when the session ends: transcription starts automatically
+  (this part uses the CPU heavily — fine to leave it running and walk away).
 
 Files are saved in `sessions/<date_time>/`:
 
 ```
-sessions/2026-06-28_21-00-00/
-├── transcript.txt   ← live transcript
-└── recording.wav    ← audio backup
+sessions/2026-07-14_21-00-00/
+├── transcript.txt   ← the merged transcript (feed this to your LLM)
+├── mic.wav          ← your voice (backup)
+├── discord.wav      ← system audio: friends + game (backup)
+├── mic.srt          ← per-track subtitles with timestamps
+└── discord.srt
 ```
 
 ### Options
 
 ```bash
-LANG_CODE=en ./start.sh        # change language (default: it = Italian)
-MODEL=medium ./start.sh        # use a specific model for the live run
+LANG_CODE=en ./start.sh          # change language (default: it = Italian)
+LANG_CODE=auto ./start.sh        # let whisper auto-detect the language
+MODEL=small ./start.sh           # force a model for the final transcription
+AUTO_TRANSCRIBE=0 ./start.sh     # record only, transcribe later (see below)
 ```
 
 ---
 
-## 4. (Optional) High-quality final transcription
+## 4. (Re-)transcribe a session
 
-After a session you can re-transcribe the recording with the most accurate model
-to get a cleaner text:
+The `.wav` backups are kept, so you can always redo the transcript — for
+example with a bigger model, or if you recorded with `AUTO_TRANSCRIBE=0`:
 
 ```bash
-MODEL=large-v3 ./transcribe.sh sessions/2026-06-28_21-00-00/recording.wav
+./transcribe.sh sessions/2026-07-14_21-00-00
+MODEL=medium ./transcribe.sh sessions/2026-07-14_21-00-00   # higher quality
 ```
 
-It creates a `recording.txt` next to the audio file.
+It also works on a single audio file (any format ffmpeg can read):
+
+```bash
+./transcribe.sh some-recording.mp3    # creates some-recording.txt
+```
 
 ---
 
-## How it works (in short)
+## 5. Summarize with an LLM
 
-`start.sh` uses PipeWire/PulseAudio to create a *null sink* called `gdr_mix` that
-acts as a mixer: it routes both the **output monitor** and the **microphone**
-into it. Its `gdr_mix.monitor` therefore carries mic + audio together, and is fed
-to whisper.cpp (live) and to `parec` (the `.wav` backup). On exit, the temporary
-audio modules are removed automatically.
+That part is up to you: upload `transcript.txt` to your favorite LLM and ask
+for a session summary. The file starts with a comment explaining the
+`[ME]` / `[DISCORD]` labels so the model has the context it needs.
 
 ---
 
 ## Troubleshooting
 
-- **"whisper-stream not found"** → run `./install.sh` first.
-- **Game audio not transcribed** → check that the default output in
-  *Settings → Sound* is the one you're actually using.
-- **Choppy / laggy live transcription** → use a smaller model
-  (`MODEL=small ./start.sh` or `MODEL=base`) and rely on `transcribe.sh` for the
-  high-quality final pass.
-- **No sound in the `.wav`** → verify `gdr_mix` is active during the session
-  (`pactl list short sinks | grep gdr_mix`).
-- **Wrong language in the transcript** → pass `LANG_CODE=it` (or your language).
+- **"whisper-cli not found"** → run `./install.sh` first.
+- **"the microphone/system-audio track sounds silent"** → the wrong device is
+  set as default; fix it in *Settings → Sound* and record again.
+- **Friends' voices missing** → Discord must play through the **default**
+  output device. Check *Settings → Sound* and Discord's own output setting.
+- **Junk lines in the transcript** (e.g. "Sottotitoli a cura di...") → whisper
+  hallucinates on music. If you play background music during sessions, keep it
+  out of the recorded output (e.g. play it on another device) or just ignore
+  those lines — the LLM summary won't care.
+- **Transcription too slow** → use a smaller model:
+  `MODEL=small ./transcribe.sh sessions/<dir>`.
+- **Wrong language in the transcript** → pass `LANG_CODE=it` (or your
+  language, or `auto`).

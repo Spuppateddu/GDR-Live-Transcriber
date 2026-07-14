@@ -29,14 +29,14 @@ choose_model() {
     fi
 
     echo "==> Detected CPU: ${cores} cores, ${ram_gb} GB RAM" >&2
-    echo "    Recommended model for LIVE on this machine: ${rec}" >&2
+    echo "    Recommended model for this machine: ${rec}" >&2
     echo >&2
-    echo "Choose the model to download (for real-time transcription):" >&2
+    echo "Choose the model to download (used to transcribe after each session):" >&2
     echo "   1) tiny     - fastest, low quality            (~75 MB)"  >&2
     echo "   2) base     - fast, decent quality            (~140 MB)" >&2
     echo "   3) small    - good balance                    (~460 MB)" >&2
-    echo "   4) medium   - slow but very accurate          (~1.5 GB)" >&2
-    echo "   5) large-v3 - best quality, NOT for live      (~3 GB)"   >&2
+    echo "   4) medium   - very accurate, slower           (~1.5 GB)" >&2
+    echo "   5) large-v3 - best quality, VERY slow on CPU  (~3 GB)"   >&2
     echo >&2
     echo "All models are multilingual and understand Italian." >&2
     echo >&2
@@ -67,8 +67,7 @@ sudo apt-get install -y \
     build-essential cmake git \
     ffmpeg \
     pulseaudio-utils \
-    pipewire-audio-client-libraries wireplumber \
-    libsdl2-dev
+    pipewire-audio-client-libraries wireplumber
 
 echo "==> Getting whisper.cpp..."
 if [ -d "$WHISPER_DIR/.git" ]; then
@@ -77,8 +76,8 @@ else
     git clone https://github.com/ggerganov/whisper.cpp "$WHISPER_DIR"
 fi
 
-echo "==> Building whisper.cpp (with live-stream support)..."
-cmake -S "$WHISPER_DIR" -B "$WHISPER_DIR/build" -DWHISPER_SDL2=ON -DCMAKE_BUILD_TYPE=Release
+echo "==> Building whisper.cpp..."
+cmake -S "$WHISPER_DIR" -B "$WHISPER_DIR/build" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$WHISPER_DIR/build" -j --config Release
 
 echo "==> Downloading model: $MODEL ..."
