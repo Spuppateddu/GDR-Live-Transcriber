@@ -39,11 +39,17 @@ if [ ! -x "$CLI_BIN" ]; then
     exit 1
 fi
 
-# The live draft needs a fast model to keep up while you play; the big model
-# stays reserved for the accurate final pass.
+# The live draft needs a model fast enough to keep up while you play.
+# On a CPU-only build that means base/tiny; a GPU build transcribes a 30s
+# chunk in a couple of seconds even with medium, so prefer the good models.
 LIVE_MODEL="${LIVE_MODEL:-}"
 if [ -z "$LIVE_MODEL" ]; then
-    for m in base tiny; do
+    if ldd "$CLI_BIN" 2>/dev/null | grep -q 'libggml-cuda'; then
+        CANDIDATES="medium small base tiny"
+    else
+        CANDIDATES="base tiny"
+    fi
+    for m in $CANDIDATES; do
         if [ -f "$HERE/whisper.cpp/models/ggml-$m.bin" ]; then LIVE_MODEL="$m"; break; fi
     done
 fi
@@ -52,6 +58,12 @@ if [ -z "$LIVE_MODEL" ] || [ ! -f "$HERE/whisper.cpp/models/ggml-$LIVE_MODEL.bin
     exit 1
 fi
 MODEL_FILE="$HERE/whisper.cpp/models/ggml-$LIVE_MODEL.bin"
+
+# VAD: skip non-speech inside a chunk; without it whisper can hallucinate
+# text on partial silence (the mean-volume check only catches fully silent chunks).
+VAD_ARGS=()
+VAD_MODEL="$HERE/whisper.cpp/models/ggml-silero-v6.2.0.bin"
+[ -f "$VAD_MODEL" ] && VAD_ARGS=(--vad -vm "$VAD_MODEL")
 
 TMP="$(mktemp -d)"
 STOP=""
@@ -114,6 +126,7 @@ do_chunk() {  # $1=rawfile  $2=label  $3=offset-bytes  $4=length-bytes
         return 0
     fi
     "$CLI_BIN" -m "$MODEL_FILE" -l "$LANG_CODE" -t "$LIVE_THREADS" -np \
+        "${VAD_ARGS[@]}" \
         -osrt -of "$TMP/chunk" -f "$TMP/chunk.wav" >/dev/null 2>&1 || return 0
     [ -f "$TMP/chunk.srt" ] && srt_to_tsv "$TMP/chunk.srt" "$2" "$start_s"
     return 0

@@ -77,11 +77,28 @@ else
 fi
 
 echo "==> Building whisper.cpp..."
-cmake -S "$WHISPER_DIR" -B "$WHISPER_DIR/build" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$WHISPER_DIR/build" -j --config Release
+# With an NVIDIA GPU + CUDA toolkit, build GPU-accelerated: transcription gets
+# ~10-20x faster and bigger models become usable even for the live draft.
+CUDA_FLAG=""
+JOBS="$(nproc 2>/dev/null || echo 4)"
+if command -v nvcc >/dev/null 2>&1 && command -v nvidia-smi >/dev/null 2>&1; then
+    echo "    NVIDIA GPU + CUDA toolkit found: building with GPU support."
+    CUDA_FLAG="-DGGML_CUDA=ON"
+    # nvcc jobs need gigabytes of RAM each: unbounded -j can freeze the PC.
+    [ "$JOBS" -gt 4 ] && JOBS=4
+fi
+cmake -S "$WHISPER_DIR" -B "$WHISPER_DIR/build" -DCMAKE_BUILD_TYPE=Release $CUDA_FLAG
+cmake --build "$WHISPER_DIR/build" -j"$JOBS" --config Release
 
 echo "==> Downloading model: $MODEL ..."
 bash "$WHISPER_DIR/models/download-ggml-model.sh" "$MODEL"
+
+# VAD model: lets whisper skip non-speech, preventing hallucinated text on
+# the long silences of a mic track while other people are talking.
+if [ ! -f "$WHISPER_DIR/models/ggml-silero-v6.2.0.bin" ]; then
+    echo "==> Downloading VAD model (skips silence, ~1 MB)..."
+    bash "$WHISPER_DIR/models/download-vad-model.sh" silero-v6.2.0
+fi
 
 # The live draft shown while recording needs a fast model (base or tiny);
 # big models can't keep up in real time on CPU.

@@ -38,7 +38,10 @@ support English and ~100 other languages too (see Options).
 ## Requirements
 
 - **Ubuntu 24.04** (or derivative) with **PipeWire** (default on Ubuntu 24.04).
-- Runs on **CPU** (no NVIDIA GPU required).
+- Runs on **CPU** (no NVIDIA GPU required). With an NVIDIA GPU and the CUDA
+  toolkit installed, `install.sh` builds GPU-accelerated automatically:
+  transcription gets ~10-20x faster and the live draft can use the big
+  `medium` model instead of `base`.
 - ~2 GB free space for the model + build.
 
 ---
@@ -58,6 +61,9 @@ cd GDR-Live-Transcriber
 
 If you pick a big model (`small` or larger), `install.sh` also downloads the
 small `base` model (~140 MB) — that one powers the live draft during recording.
+It also downloads a tiny VAD (voice activity detection) model that skips
+non-speech: without it, the long silences on the mic track while friends talk
+make whisper hallucinate repeated sentences.
 
 ### Which model?
 

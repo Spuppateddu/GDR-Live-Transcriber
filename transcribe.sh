@@ -56,9 +56,21 @@ fi
 
 THREADS="$(nproc 2>/dev/null || echo 4)"
 
+# Voice Activity Detection: skip non-speech before it reaches whisper.
+# Without it, long silences (e.g. the mic while friends talk) make whisper
+# hallucinate a sentence and repeat it in a loop, ruining the whole track.
+VAD_ARGS=()
+VAD_MODEL="$WHISPER_DIR/models/ggml-silero-v6.2.0.bin"
+if [ -f "$VAD_MODEL" ]; then
+    VAD_ARGS=(--vad -vm "$VAD_MODEL")
+else
+    echo "NOTE: VAD model missing; silent stretches may produce hallucinated text." >&2
+    echo "      Get it with:  bash whisper.cpp/models/download-vad-model.sh silero-v6.2.0" >&2
+fi
+
 # Run whisper on one wav, producing <prefix>.srt (timestamps needed for merging).
 run_whisper_srt() {  # $1=wav  $2=output-prefix  $3=threads
-    "$CLI_BIN" -m "$MODEL_FILE" -l "$LANG_CODE" -t "$3" \
+    "$CLI_BIN" -m "$MODEL_FILE" -l "$LANG_CODE" -t "$3" "${VAD_ARGS[@]}" \
         -osrt -of "$2" -f "$1" > "$2.log" 2>&1
 }
 
@@ -167,6 +179,6 @@ trap 'rm -f "$TMP_WAV"' EXIT
 ffmpeg -hide_banner -loglevel error -y -i "$AUDIO" -ar 16000 -ac 1 "$TMP_WAV"
 
 echo "==> Transcribing '$AUDIO' (model: $MODEL, language: $LANG_CODE)..."
-"$CLI_BIN" -m "$MODEL_FILE" -l "$LANG_CODE" -t "$THREADS" \
+"$CLI_BIN" -m "$MODEL_FILE" -l "$LANG_CODE" -t "$THREADS" "${VAD_ARGS[@]}" \
     -otxt -of "$OUT" -f "$TMP_WAV"
 echo "==> Done: $OUT.txt"
