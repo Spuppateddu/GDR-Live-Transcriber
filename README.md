@@ -75,7 +75,7 @@ a 3-hour session:
 |------------|----------|------------------------------------------|
 | `base`     | decent   | ~10 min                                  |
 | `small`    | good     | ~30 min                                  |
-| `medium`   | great    | ~1–2 h (**recommended** on 8+ cores, 16+ GB RAM) |
+| `medium`   | great    | ~1–2 h (**recommended** on 4+ cores, 12+ GB RAM) |
 | `large-v3` | best     | can take longer than the session itself  |
 
 > ⚠️ Do not use the `.en` models (e.g. `small.en`): those are **English only**.

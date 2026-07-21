@@ -22,8 +22,12 @@ choose_model() {
     ram_gb="$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 8)"
 
     # --- recommendation based on cores + RAM ---------------------------------
-    if   [ "$cores" -ge 8 ] && [ "$ram_gb" -ge 16 ]; then rec="medium"
-    elif [ "$cores" -ge 4 ] && [ "$ram_gb" -ge 8  ]; then rec="small"
+    # 'medium' is the accuracy sweet spot and only uses ~2-2.5 GB while running,
+    # so ~12 GB total is plenty of headroom. We deliberately gate at 12, not 16:
+    # a "16 GB" machine usually reports ~15 GB (the iGPU reserves some), and a
+    # 16 GB gate would wrongly miss it and suggest 'small' instead.
+    if   [ "$ram_gb" -ge 12 ] && [ "$cores" -ge 4 ]; then rec="medium"
+    elif [ "$ram_gb" -ge 6  ] && [ "$cores" -ge 2 ]; then rec="small"
     else                                                   rec="base"
     fi
 
