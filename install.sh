@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WHISPER_DIR="$HERE/whisper.cpp"
 
 # Which model to download. You can force it non-interactively with MODEL=...
-#   tiny  base  small  medium  large-v3   (smaller = faster, larger = accurate)
+#   base  small  medium  large-v3   (smaller = faster, larger = accurate)
 # If MODEL is not set, the script detects your CPU/RAM, recommends a model and
 # lets you choose.
 MODEL="${MODEL:-}"
@@ -24,30 +24,27 @@ choose_model() {
     # --- recommendation based on cores + RAM ---------------------------------
     if   [ "$cores" -ge 8 ] && [ "$ram_gb" -ge 16 ]; then rec="medium"
     elif [ "$cores" -ge 4 ] && [ "$ram_gb" -ge 8  ]; then rec="small"
-    elif [ "$cores" -ge 2 ];                          then rec="base"
-    else                                                   rec="tiny"
+    else                                                   rec="base"
     fi
 
     echo "==> Detected CPU: ${cores} cores, ${ram_gb} GB RAM" >&2
     echo "    Recommended model for this machine: ${rec}" >&2
     echo >&2
     echo "Choose the model to download (used to transcribe after each session):" >&2
-    echo "   1) tiny     - fastest, low quality            (~75 MB)"  >&2
-    echo "   2) base     - fast, decent quality            (~140 MB)" >&2
-    echo "   3) small    - good balance                    (~460 MB)" >&2
-    echo "   4) medium   - very accurate, slower           (~1.5 GB)" >&2
-    echo "   5) large-v3 - best quality, VERY slow on CPU  (~3 GB)"   >&2
+    echo "   1) base     - fast, decent quality            (~140 MB)" >&2
+    echo "   2) small    - good balance                    (~460 MB)" >&2
+    echo "   3) medium   - very accurate, slower           (~1.5 GB)" >&2
+    echo "   4) large-v3 - best quality, VERY slow on CPU  (~3 GB)"   >&2
     echo >&2
     echo "All models are multilingual and understand Italian." >&2
     echo >&2
     local choice
     read -rp "Number [Enter = recommended: ${rec}]: " choice </dev/tty || choice=""
     case "$choice" in
-        1) echo "tiny" ;;
-        2) echo "base" ;;
-        3) echo "small" ;;
-        4) echo "medium" ;;
-        5) echo "large-v3" ;;
+        1) echo "base" ;;
+        2) echo "small" ;;
+        3) echo "medium" ;;
+        4) echo "large-v3" ;;
         "") echo "$rec" ;;
         *) echo "Invalid choice, using recommended: ${rec}" >&2; echo "$rec" ;;
     esac
@@ -100,13 +97,12 @@ if [ ! -f "$WHISPER_DIR/models/ggml-silero-v6.2.0.bin" ]; then
     bash "$WHISPER_DIR/models/download-vad-model.sh" silero-v6.2.0
 fi
 
-# The live draft shown while recording needs a fast model (base or tiny);
+# The live draft shown while recording needs a fast model (base);
 # big models can't keep up in real time on CPU.
 case "$MODEL" in
-    tiny|base) : ;;   # the main model is already fast enough for the live draft
+    base) : ;;   # the main model is already fast enough for the live draft
     *)
-        if [ ! -f "$WHISPER_DIR/models/ggml-base.bin" ] \
-           && [ ! -f "$WHISPER_DIR/models/ggml-tiny.bin" ]; then
+        if [ ! -f "$WHISPER_DIR/models/ggml-base.bin" ]; then
             echo "==> Downloading 'base' too (fast model for the live draft, ~140 MB)..."
             bash "$WHISPER_DIR/models/download-ggml-model.sh" base
         fi ;;

@@ -42,7 +42,7 @@ fi
 # longer than the session itself.
 MODEL="${MODEL:-}"
 if [ -z "$MODEL" ]; then
-    for m in medium small large-v3 base tiny; do
+    for m in medium small large-v3 base; do
         if [ -f "$WHISPER_DIR/models/ggml-$m.bin" ]; then MODEL="$m"; break; fi
     done
 fi

@@ -1,17 +1,20 @@
-# whisper.cpp viene clonato e compilato da install.sh (non va versionato)
+# whisper.cpp is cloned and built by install.sh (not versioned)
 /whisper.cpp/
 
-# Sessioni: trascrizioni e registrazioni audio
+# Sessions: transcripts and audio recordings
 /sessions/
 
-# Modelli scaricati (file grandi)
+# Downloaded models (large files)
 *.bin
 ggml-*.bin
 
-# File temporanei / audio
+# Temporary / audio files
 *.wav
 *.mp3
 *.log
+
+# Saved answers written by start.sh (personal, per-machine)
+/config.env
 
 # OS / editor
 .DS_Store

@@ -14,7 +14,7 @@
 # Usage:  ./live.sh <session-directory-being-recorded>
 #
 # Options (environment variables):
-#   LIVE_MODEL=base   fast model for the draft (default: base, else tiny)
+#   LIVE_MODEL=base   fast model for the draft (default: base)
 #   LIVE_CHUNK=30     seconds of audio per live chunk
 #   LIVE_THREADS=4    CPU threads per live whisper run
 #   LANG_CODE=it      spoken language (default: it, use 'auto' to detect)
@@ -40,14 +40,14 @@ if [ ! -x "$CLI_BIN" ]; then
 fi
 
 # The live draft needs a model fast enough to keep up while you play.
-# On a CPU-only build that means base/tiny; a GPU build transcribes a 30s
+# On a CPU-only build that means base; a GPU build transcribes a 30s
 # chunk in a couple of seconds even with medium, so prefer the good models.
 LIVE_MODEL="${LIVE_MODEL:-}"
 if [ -z "$LIVE_MODEL" ]; then
     if ldd "$CLI_BIN" 2>/dev/null | grep -q 'libggml-cuda'; then
-        CANDIDATES="medium small base tiny"
+        CANDIDATES="medium small base"
     else
-        CANDIDATES="base tiny"
+        CANDIDATES="base"
     fi
     for m in $CANDIDATES; do
         if [ -f "$HERE/whisper.cpp/models/ggml-$m.bin" ]; then LIVE_MODEL="$m"; break; fi

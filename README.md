@@ -20,8 +20,8 @@ How it works:
    merged into one time-ordered transcript with speaker labels:
 
    ```
-   [00:12:41] [ME] Entro nella cripta con la torcia accesa.
-   [00:12:47] [PC] Tira un tiro salvezza su destrezza!
+   [00:12:41] [ME] I enter the crypt with my torch lit.
+   [00:12:47] [PC] Roll a Dexterity saving throw!
    ```
 
 Recording the two tracks separately (instead of mixing them) gives much better
@@ -73,7 +73,6 @@ a 3-hour session:
 
 | Model      | Accuracy | Transcription time (typical 8-core CPU) |
 |------------|----------|------------------------------------------|
-| `tiny`     | low      | minutes — only for testing               |
 | `base`     | decent   | ~10 min                                  |
 | `small`    | good     | ~30 min                                  |
 | `medium`   | great    | ~1–2 h (**recommended** on 8+ cores, 16+ GB RAM) |
@@ -107,6 +106,14 @@ headphones) do it **before** starting the session.
 ./start.sh
 ```
 
+The first time, it **asks a few questions** (language, model, live draft on/off)
+and lists every valid answer — just press **Enter** at each to take the default,
+so there's nothing to memorize. At the end it offers to **remember your answers**
+in a `config.env` file. On every later run it then **shows your saved setup and
+asks whether to keep it or change it** — keep to start recording right away, or
+change to answer the questions again. Delete `config.env` to wipe it entirely.
+The environment variables below still work and override the saved answers.
+
 - A timer shows that recording is running. Play normally.
 - Every ~30 seconds, the **live draft** prints what was just said, with the
   same `[ME]` / `[PC]` labels as the final transcript. It's a quick
@@ -135,7 +142,7 @@ MODEL=small ./start.sh           # force a model for the final transcription
 AUTO_TRANSCRIBE=0 ./start.sh     # record only, transcribe later (see below)
 LIVE=0 ./start.sh                # no live draft, just the timer
 LIVE_CHUNK=20 ./start.sh         # live draft updates every 20 s instead of 30
-LIVE_MODEL=tiny ./start.sh       # force the model used for the live draft
+LIVE_MODEL=base ./start.sh       # force the model used for the live draft
 ```
 
 ---
@@ -173,7 +180,7 @@ for a session summary. The file starts with a comment explaining the
   set as default; fix it in *Settings → Sound* and record again.
 - **Friends' voices missing** → Discord must play through the **default**
   output device. Check *Settings → Sound* and Discord's own output setting.
-- **Junk lines in the transcript** (e.g. "Sottotitoli a cura di...") → whisper
+- **Junk lines in the transcript** (e.g. "Thanks for watching!") → whisper
   hallucinates on music. If you play background music during sessions, keep it
   out of the recorded output (e.g. play it on another device) or just ignore
   those lines — the LLM summary won't care.
