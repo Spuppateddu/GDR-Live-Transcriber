@@ -14,16 +14,20 @@
 # behind live (handy to re-read names and events), done with a fast model.
 # The accurate transcript is still the one produced at the end.
 #
-# When you run it the script ASKS for the common options (language, model,
-# live draft) with all the valid answers listed — no need to remember anything.
-# You can still preset any option as an environment variable to skip its
-# question (handy for scripting or a fixed setup):
+# When you run it the script ASKS for the common options (devices, language,
+# model, live draft) with all the valid answers listed — no need to remember
+# anything. You can still preset any option as an environment variable to skip
+# its question (handy for scripting or a fixed setup):
+#   MIC_SRC=...         PipeWire source to record as the microphone
+#   PC_SRC=...          PipeWire source to record as the PC audio (a .monitor)
 #   LANG_CODE=it        spoken language (default: it, use 'auto' to detect)
 #   MODEL=small         whisper model for the transcription at the end
 #   AUTO_TRANSCRIBE=0   record only; transcribe later with ./transcribe.sh
 #   LIVE=0              disable the live draft in the terminal
 #   LIVE_MODEL=base     fast model for the live draft (default: base)
 #   LIVE_CHUNK=30       seconds of audio per live chunk
+#
+# List the device names with:  pactl list short sources
 #
 set -euo pipefail
 
@@ -46,6 +50,8 @@ CONFIG_FILE="$HERE/config.env"
 
 # Remember what was set on the command line BEFORE loading the saved file, so a
 # command-line value keeps winning even if you later choose to change the setup.
+CLI_MIC_SRC="${MIC_SRC:-}"
+CLI_PC_SRC="${PC_SRC:-}"
 CLI_LANG_CODE="${LANG_CODE:-}"
 CLI_MODEL="${MODEL:-}"
 CLI_LIVE="${LIVE:-}"
@@ -72,17 +78,109 @@ maybe_header() {
     HEADER_SHOWN=1
 }
 
+# --- audio devices -----------------------------------------------------------
+# PipeWire calls every recordable thing a "source". Real inputs (mic, line-in,
+# webcam mic) are plain sources; what the PC plays back is recorded from the
+# ".monitor" source of an output. So: microphone = a non-monitor source,
+# PC audio = a monitor source.
+list_sources() {  # $1 = mic|pc  ->  lines "name<TAB>human description"
+    pactl list sources 2>/dev/null | awk -v kind="$1" '
+        /^[[:space:]]*Name:/ {
+            name = $0; sub(/^[[:space:]]*Name:[[:space:]]*/, "", name); next
+        }
+        /^[[:space:]]*Description:/ {
+            if (name == "") next
+            desc = $0; sub(/^[[:space:]]*Description:[[:space:]]*/, "", desc)
+            is_monitor = (name ~ /\.monitor$/)
+            if ((kind == "pc") == is_monitor) print name "\t" desc
+            name = ""
+        }
+    '
+}
+
+describe_device() {  # $1 = source name -> its description, or the raw name
+    local n d
+    while IFS=$'\t' read -r n d; do
+        [ "$n" = "$1" ] && { printf '%s' "$d"; return; }
+    done < <(list_sources mic; list_sources pc)
+    printf '%s' "$1"
+}
+
+device_exists() {  # $1 = source name
+    local n d
+    while IFS=$'\t' read -r n d; do
+        [ "$n" = "$1" ] && return 0
+    done < <(list_sources mic; list_sources pc)
+    return 1
+}
+
+# Numbered menu of the available devices; sets CHOSEN to the picked source name.
+CHOSEN=""
+choose_device() {  # $1 = mic|pc   $2 = title   $3 = name to offer as default
+    local kind="$1" title="$2" def="$3"
+    local names=() descs=() n d i c mark def_i=0 found=0
+    while IFS=$'\t' read -r n d; do names+=("$n"); descs+=("$d"); done \
+        < <(list_sources "$kind")
+
+    if [ "${#names[@]}" -eq 0 ]; then
+        CHOSEN="$def"
+        return
+    fi
+    for i in "${!names[@]}"; do
+        [ "${names[$i]}" = "$def" ] && { def_i=$i; found=1; }
+    done
+    # The system default can be missing here (e.g. it is a monitor while we are
+    # listing microphones): offer the first device instead of something absent.
+    [ "$found" = "1" ] || def="${names[0]}"
+
+    maybe_header
+    echo
+    echo "$title"
+    for i in "${!names[@]}"; do
+        mark=""; [ "${names[$i]}" = "$def" ] && mark="   (default, current system choice)"
+        echo "   $((i+1))) ${descs[$i]}$mark"
+        echo "        ${names[$i]}"
+    done
+    c="$(ask "Choice [$((def_i+1))]: ")"
+    if [ -n "$c" ] && [ "$c" -ge 1 ] 2>/dev/null \
+       && [ "$c" -le "${#names[@]}" ] 2>/dev/null; then
+        CHOSEN="${names[$((c-1))]}"
+    else
+        CHOSEN="$def"
+    fi
+}
+
+# What the system would use if we did not ask: default input, and the monitor
+# of the default output.
+DEFAULT_MIC="$(pactl get-default-source 2>/dev/null || true)"
+DEFAULT_SINK="$(pactl get-default-sink 2>/dev/null || true)"
+DEFAULT_PC=""
+[ -n "$DEFAULT_SINK" ] && DEFAULT_PC="$DEFAULT_SINK.monitor"
+# A remembered device disappears when you unplug the USB mic or the headset;
+# forget it in that case so we ask again instead of recording nothing.
+for v in MIC_SRC PC_SRC; do
+    [ -n "${!v:-}" ] || continue
+    device_exists "${!v}" && continue
+    echo "WARNING: the saved $v device is not connected right now:" >&2
+    echo "         ${!v}" >&2
+    unset "$v"
+done
+
 # If a saved setup was loaded, show it and let you keep or change it before
 # recording. Choosing to change just forgets the saved values (keeping any
 # command-line override) so the questions below run again.
 if [ "$CONFIG_LOADED" = "1" ] && [ -e /dev/tty ]; then
     echo "==> Current saved setup (config.env):"
+    echo "      Microphone: $(describe_device "${MIC_SRC:-$DEFAULT_MIC}")"
+    echo "      PC audio:   $(describe_device "${PC_SRC:-$DEFAULT_PC}")"
     echo "      Language:   ${LANG_CODE:-it}"
     echo "      Model:      ${MODEL:-<best installed>}"
     echo "      Live draft: $([ "${LIVE:-1}" = "0" ] && echo off || echo on)"
     keep="$(ask 'Use this setup? [Y = keep / n = change it]: ')"
     case "$keep" in
         n|N|no|NO)
+            MIC_SRC="$CLI_MIC_SRC"
+            PC_SRC="$CLI_PC_SRC"
             LANG_CODE="$CLI_LANG_CODE"
             MODEL="$CLI_MODEL"
             LIVE="$CLI_LIVE"
@@ -92,7 +190,28 @@ if [ "$CONFIG_LOADED" = "1" ] && [ -e /dev/tty ]; then
 fi
 
 if [ -e /dev/tty ]; then
-    # 1) Language spoken in the session (used for both draft and final text).
+    # 1) Which microphone to record as the [ME] track. The system default is
+    #    often the wrong one (a webcam mic, for instance), hence this question.
+    if [ -z "${MIC_SRC:-}" ]; then
+        choose_device mic \
+            "Microphone to record as [ME] — your own voice:" "$DEFAULT_MIC"
+        MIC_SRC="$CHOSEN"
+        ASKED+=("MIC_SRC")
+    fi
+
+    # 2) Which output to listen in on for the [PC] track (Discord + game).
+    #    It must be the output your friends' voices actually play from: if you
+    #    listen on headphones, pick the headphones' monitor, not the speakers'.
+    if [ -z "${PC_SRC:-}" ]; then
+        choose_device pc \
+            "PC audio to record as [PC] — Discord voices and game sounds.
+Pick the output you actually LISTEN through (headset, speakers...):" \
+            "$DEFAULT_PC"
+        PC_SRC="$CHOSEN"
+        ASKED+=("PC_SRC")
+    fi
+
+    # 3) Language spoken in the session (used for both draft and final text).
     if [ -z "${LANG_CODE:-}" ]; then
         maybe_header
         echo
@@ -111,7 +230,7 @@ if [ -e /dev/tty ]; then
         ASKED+=("LANG_CODE")
     fi
 
-    # 2) Model for the FINAL transcript — list only models actually installed,
+    # 4) Model for the FINAL transcript — list only models actually installed,
     #    so you can never pick one that isn't there. Default = the best one.
     if [ -z "${MODEL:-}" ]; then
         installed=()
@@ -142,7 +261,7 @@ if [ -e /dev/tty ]; then
         # 0 or 1 model installed: nothing to choose; transcribe.sh auto-picks it.
     fi
 
-    # 3) Live draft transcript on screen while you play?
+    # 5) Live draft transcript on screen while you play?
     if [ -z "${LIVE:-}" ]; then
         maybe_header
         echo
@@ -162,6 +281,8 @@ fi
 
 # Apply defaults for anything still unset (e.g. no terminal), and export the
 # choices so the live.sh / transcribe.sh helpers inherit them.
+MIC_SRC="${MIC_SRC:-$DEFAULT_MIC}"
+PC_SRC="${PC_SRC:-$DEFAULT_PC}"
 LANG_CODE="${LANG_CODE:-it}"
 LIVE="${LIVE:-1}"
 export LANG_CODE LIVE
@@ -177,6 +298,8 @@ if [ -e /dev/tty ] && [ "${#ASKED[@]}" -gt 0 ]; then
                 echo "# Delete a line to be asked about that option again;"
                 echo "# delete the whole file to reconfigure from scratch."
                 echo "# A value passed on the command line still overrides these."
+                echo ": \"\${MIC_SRC:=$MIC_SRC}\""
+                echo ": \"\${PC_SRC:=$PC_SRC}\""
                 echo ": \"\${LANG_CODE:=$LANG_CODE}\""
                 [ -n "${MODEL:-}" ] && echo ": \"\${MODEL:=$MODEL}\""
                 echo ": \"\${LIVE:=$LIVE}\""
@@ -187,21 +310,26 @@ if [ -e /dev/tty ] && [ "${#ASKED[@]}" -gt 0 ]; then
     esac
 fi
 
-# --- pick the devices --------------------------------------------------------
-# Mic = default input, PC audio (Discord/game) = monitor of the default output.
-# Set them in Settings -> Sound before starting.
-MIC_SRC="$(pactl get-default-source)"
-OUT_SINK="$(pactl get-default-sink)"
-MON_SRC="$OUT_SINK.monitor"
-
-if [ "$MIC_SRC" = "auto_null" ] || [ "$OUT_SINK" = "auto_null" ]; then
-    echo "WARNING: PipeWire reports no real audio device (default is 'auto_null')." >&2
-    echo "         Check Settings -> Sound. Recording will likely be silent." >&2
+# --- sanity-check the devices ------------------------------------------------
+# They come from the questions above (or from config.env / the environment).
+if [ -z "$MIC_SRC" ] || [ -z "$PC_SRC" ]; then
+    echo "ERROR: no audio device to record from. Check Settings -> Sound," >&2
+    echo "       or list the names with: pactl list short sources" >&2
+    exit 1
 fi
+case "$MIC_SRC:$PC_SRC" in
+    *auto_null*)
+        echo "WARNING: PipeWire reports no real audio device ('auto_null')." >&2
+        echo "         Check Settings -> Sound. Recording will likely be silent." >&2 ;;
+esac
 case "$MIC_SRC" in
     *.monitor)
-        echo "WARNING: your default input is a monitor, not a microphone." >&2
-        echo "         Pick your real mic in Settings -> Sound." >&2 ;;
+        echo "WARNING: the microphone track is set to a monitor, not a real mic." >&2 ;;
+esac
+case "$PC_SRC" in
+    *.monitor) ;;
+    *) echo "WARNING: the PC-audio track is not a '.monitor' source — it will" >&2
+       echo "         record an input, not what your PC plays." >&2 ;;
 esac
 
 # --- output location ---------------------------------------------------------
@@ -214,14 +342,16 @@ MIC_WAV="$OUT_DIR/mic.wav"
 PC_WAV="$OUT_DIR/pc.wav"
 
 echo "==> Session:      $OUT_DIR"
-echo "    Microphone:   $MIC_SRC"
-echo "    PC audio:     $MON_SRC"
+echo "    Microphone:   $(describe_device "$MIC_SRC")"
+echo "                  $MIC_SRC"
+echo "    PC audio:     $(describe_device "$PC_SRC")"
+echo "                  $PC_SRC"
 
 # --- record ------------------------------------------------------------------
 # Raw PCM (no header): safe to cut at any moment, converted to .wav afterwards.
 parec -d "$MIC_SRC" --rate="$RATE" --channels=1 --format=s16le > "$MIC_RAW" &
 MIC_PID=$!
-parec -d "$MON_SRC" --rate="$RATE" --channels=1 --format=s16le > "$PC_RAW" &
+parec -d "$PC_SRC" --rate="$RATE" --channels=1 --format=s16le > "$PC_RAW" &
 PC_PID=$!
 
 # Live draft: a helper process transcribes the tracks in near-real-time with
@@ -289,7 +419,8 @@ check_level() {
     [ -n "$mean" ] || return 0
     if awk -v m="$mean" 'BEGIN{exit !(m < -55)}'; then
         echo "WARNING: the $name track sounds silent (mean volume ${mean} dB)." >&2
-        echo "         Check the default devices in Settings -> Sound." >&2
+        echo "         Wrong device? Run ./start.sh again and pick another one" >&2
+        echo "         (answer 'n' at the saved-setup question)." >&2
     fi
 }
 check_level "$MIC_WAV" "microphone"

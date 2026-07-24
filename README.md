@@ -91,12 +91,29 @@ anytime with `MODEL=...`.
 
 ---
 
-## 2. Before first use: set your default devices
+## 2. Audio devices: you pick them when you start
 
-The tool records the **default microphone** and the **default audio output**.
-Open *Settings → Sound* and make sure the correct mic and speakers/headphones
-are selected as the defaults. If you switch output device (e.g. plug in
-headphones) do it **before** starting the session.
+`start.sh` **lists your audio devices and asks which two to record**, so you
+never depend on the system default being the right one (it often isn't — a
+webcam mic tends to grab it):
+
+- **Microphone** → your voice, the `[ME]` track. Choose from the real inputs.
+- **PC audio** → Discord + game, the `[PC]` track. Choose the *monitor* of the
+  output you actually **listen through**: if your friends' voices come out of
+  your headset, pick the headset's monitor, not the speakers'.
+
+The current system defaults are pre-selected, so pressing Enter twice keeps the
+old behaviour. Your choice is saved in `config.env` with the other answers; if
+that device is not connected the next time (USB mic unplugged, headset off),
+the script says so and asks again instead of recording silence.
+
+You can also preset them and skip the questions:
+
+```bash
+pactl list short sources            # see the exact names
+MIC_SRC=alsa_input.usb-Blue_Microphones_Yeti_Stereo_Microphone_REV8-00.analog-stereo \
+PC_SRC=alsa_output.pci-0000_00_1f.3.analog-stereo.monitor ./start.sh
+```
 
 ---
 
@@ -106,7 +123,8 @@ headphones) do it **before** starting the session.
 ./start.sh
 ```
 
-The first time, it **asks a few questions** (language, model, live draft on/off)
+The first time, it **asks a few questions** (microphone, PC audio, language,
+model, live draft on/off)
 and lists every valid answer — just press **Enter** at each to take the default,
 so there's nothing to memorize. At the end it offers to **remember your answers**
 in a `config.env` file. On every later run it then **shows your saved setup and
@@ -136,6 +154,7 @@ sessions/2026-07-14_21-00-00/
 ### Options
 
 ```bash
+MIC_SRC=... PC_SRC=... ./start.sh # preset the devices (pactl list short sources)
 LANG_CODE=en ./start.sh          # change language (default: it = Italian)
 LANG_CODE=auto ./start.sh        # let whisper auto-detect the language
 MODEL=small ./start.sh           # force a model for the final transcription
@@ -176,10 +195,11 @@ for a session summary. The file starts with a comment explaining the
 ## Troubleshooting
 
 - **"whisper-cli not found"** → run `./install.sh` first.
-- **"the microphone/PC-audio track sounds silent"** → the wrong device is
-  set as default; fix it in *Settings → Sound* and record again.
-- **Friends' voices missing** → Discord must play through the **default**
-  output device. Check *Settings → Sound* and Discord's own output setting.
+- **"the microphone/PC-audio track sounds silent"** → the wrong device was
+  picked. Start again, answer `n` at *Use this setup?* and choose another one.
+- **Friends' voices missing** → the `[PC]` device must be the monitor of the
+  output Discord actually plays through. Check Discord's own output setting,
+  then pick the matching monitor when `start.sh` asks.
 - **Junk lines in the transcript** (e.g. "Thanks for watching!") → whisper
   hallucinates on music. If you play background music during sessions, keep it
   out of the recorded output (e.g. play it on another device) or just ignore
